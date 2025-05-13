@@ -158,34 +158,4 @@ public class EnemyNav : MonoBehaviour
             currentState = NavState.RotatingBeforeMoving;
         }
     }
-
-    // Aquesta funció dibuixa informació de depuració a l'escena de Unity
-    private void OnDrawGizmos()
-    {
-        // Si està activat el dibuix de gizmos i tenim waypoints, dibuixem la ruta
-        if (!drawGizmos || waypoints.Count == 0) return;
-
-        Gizmos.color = Color.yellow; // Configurem el color dels gizmos
-        for (int i = 0; i < waypoints.Count; i++)
-        {
-            if (waypoints[i] == null) continue; // Si el waypoint no existeix, continuem
-
-            // Dibuixem línies entre els waypoints per visualitzar la ruta
-            int nextIndex = (i + 1) % waypoints.Count;
-            if (waypoints[nextIndex] != null)
-            {
-                Gizmos.DrawLine(waypoints[i].Position, waypoints[nextIndex].Position);
-            }
-        }
-
-        // Si estem en mode joc, dibuixem la línia des de la posició actual fins al waypoint objectiu
-        if (Application.isPlaying)
-        {
-            if (targetWaypointIndex < waypoints.Count && waypoints[targetWaypointIndex] != null)
-            {
-                Gizmos.color = Color.red; // Configurem el color per a la línia de moviment
-                Gizmos.DrawLine(transform.position, waypoints[targetWaypointIndex].Position);
-            }
-        }
-    }
 }
