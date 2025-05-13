@@ -1577,7 +1577,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b91b7e0110906f146a912a885e0961d0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  previewWaypointPath: 1
+  simulateMovementInEditor: 1
+  simulationSpeed: 3
+  robotPrefab: {fileID: 0}
+  showTrail: 0
+  trailColor: {r: 0.8207547, g: 0.05391463, b: 0, a: 0.3}
 --- !u!1 &649288377
 GameObject:
   m_ObjectHideFlags: 0

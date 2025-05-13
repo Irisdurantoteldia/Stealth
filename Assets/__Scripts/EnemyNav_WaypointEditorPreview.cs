@@ -3,257 +3,101 @@ using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 
+// Aquest component només existeix a l'Editor de Unity i serveix per simular el moviment
+// de l'enemic entre waypoints sense necessitat de prémer "Play".
+
 [RequireComponent(typeof(EnemyNav))]
 public class EnemyNav_EditorMovementSimulator : MonoBehaviour
 {
     [Tooltip("Activar/desactivar la simulació de moviment a l'editor")]
-    public bool simulateMovementInEditor = true;
+    public bool simulateMovementInEditor = true; // Checkbox que permet activar o desactivar la simulació
 
-    [Tooltip("Velocitat de la simulació en l'editor")]
-    [Range(0.1f, 10f)]
-    public float simulationSpeed = 2f;
+    // Variables internes per controlar la simulació
+    private int currentWaypointIndex = 0;              // Índex del waypoint actual
+    private float simulationProgress = 0f;             // Progrés entre waypoints (de 0 a 1)
+    private EnemyNav enemyNav;                         // Referència al component EnemyNav
+    private Vector3 simulatedPosition;                 // Posició actual simulada
+    private double lastEditorUpdateTime;               // Temps de l'última actualització per controlar deltaTime
+    private const float simulationSpeed = 3f;          // Velocitat fixa de simulació
 
-    [Tooltip("Prefab del robot a mostrar (si està buit, s'utilitzarà un cercle)")]
-    public GameObject robotPrefab;
-
-    [Tooltip("Mostrar estela del recorregut")]
-    public bool showTrail = true;
-
-    [Tooltip("Color de l'estela")]
-    public Color trailColor = new Color(0.2f, 0.9f, 0.2f, 0.3f);
-
-    // Variables internes per la simulació
-    private int currentWaypointIndex = 0;
-    private float simulationProgress = 0f;
-    private EnemyNav enemyNav;
-    private Vector3 simulatedPosition;
-    private Vector3 previousPosition;
-    private Quaternion simulatedRotation = Quaternion.identity;
-    private List<Vector3> trailPositions = new List<Vector3>();
-    private double lastEditorUpdateTime;
-    private GameObject robotInstance;
-
-    // Mètode que s'executa quan es dibuixen els gizmos a l'editor
+    // Aquest mètode es crida automàticament per Unity per dibuixar gizmos a l’editor
     private void OnDrawGizmos()
     {
-        if (!simulateMovementInEditor) return;
+        if (!simulateMovementInEditor) return; // Si no està activada la simulació, sortim
 
-        // Inicialitzar si és necessari
         if (enemyNav == null)
-            enemyNav = GetComponent<EnemyNav>();
+            enemyNav = GetComponent<EnemyNav>(); // Assignem el component EnemyNav si encara no el tenim
 
+        // Comprovem que tenim una llista vàlida de waypoints
         if (enemyNav == null || enemyNav.waypoints == null || enemyNav.waypoints.Count < 2)
             return;
 
-        // Actualitzar la simulació
-        UpdateSimulation();
+        UpdateSimulation(); // Actualitzem la posició simulada
 
-        // Dibuixar el robot o el marcador
-        DrawRobotOrMarker();
-
-        // Dibuixar l'estela si està activada
-        if (showTrail && trailPositions.Count > 1)
-            DrawTrail();
+        // Dibuixem una esfera vermella a la posició simulada
+        Gizmos.color = Color.red;
+        Gizmos.DrawSphere(simulatedPosition, 0.4f);
     }
 
-    // Actualitza la posició simulada de l'enemic
+    // Actualitza el moviment simulat de l’enemic entre waypoints
     private void UpdateSimulation()
     {
-        // Calcular el temps transcorregut des de l'última actualització
+        // Calculem el temps transcorregut des de l'última actualització
         double currentTime = EditorApplication.timeSinceStartup;
         double deltaTime = currentTime - lastEditorUpdateTime;
         lastEditorUpdateTime = currentTime;
 
-        // Si és la primera actualització, inicialitzar
+        // Si ha passat massa temps (p. ex. canvi de finestra), usem un deltaTime per defecte
         if (deltaTime > 1f) deltaTime = 0.016f;
 
         List<Waypoint> waypoints = enemyNav.waypoints;
         if (waypoints.Count < 2) return;
 
-        // Assegurar-nos que els índexs són vàlids
+        // Ens assegurem que l’índex és vàlid
         currentWaypointIndex = Mathf.Clamp(currentWaypointIndex, 0, waypoints.Count - 1);
 
-        // Obtenir waypoint actual i següent
-        int nextIndex = (currentWaypointIndex + 1) % waypoints.Count;
+        int nextIndex = (currentWaypointIndex + 1) % waypoints.Count; // El següent waypoint
         if (waypoints[currentWaypointIndex] == null || waypoints[nextIndex] == null) return;
 
         Vector3 currentWaypoint = waypoints[currentWaypointIndex].Position;
         Vector3 nextWaypoint = waypoints[nextIndex].Position;
 
-        // Calcular la distància entre els waypoints
+        // Distància entre els waypoints
         float segmentDistance = Vector3.Distance(currentWaypoint, nextWaypoint);
         if (segmentDistance < 0.001f) segmentDistance = 0.001f;
 
-        // Actualitzar la progressió
+        // Progrés cap al següent waypoint segons la velocitat i el temps
         float moveAmount = (float)(simulationSpeed * deltaTime) / segmentDistance;
         simulationProgress += moveAmount;
 
-        // Si hem arribat al següent waypoint
+        // Si hem arribat al final del segment, passem al següent
         if (simulationProgress >= 1f)
         {
             simulationProgress -= 1f;
             currentWaypointIndex = nextIndex;
-            
-            // Actualitzar per la següent iteració
-            nextIndex = (currentWaypointIndex + 1) % waypoints.Count;
-            currentWaypoint = waypoints[currentWaypointIndex].Position;
-            nextWaypoint = waypoints[nextIndex].Position;
         }
 
-        // Calcular la posició actual interpolada
-        previousPosition = simulatedPosition;
+        // Interpolem entre waypoints per obtenir la posició simulada
         simulatedPosition = Vector3.Lerp(currentWaypoint, nextWaypoint, simulationProgress);
 
-        // Calcular la rotació per mirar cap a la direcció del moviment
-        if (previousPosition != Vector3.zero && Vector3.Distance(simulatedPosition, previousPosition) > 0.001f)
-        {
-            Vector3 direction = (simulatedPosition - previousPosition).normalized;
-            simulatedRotation = Quaternion.LookRotation(direction);
-        }
-
-        // Afegir posició a l'estela
-        if (showTrail && (trailPositions.Count == 0 || Vector3.Distance(simulatedPosition, trailPositions[trailPositions.Count - 1]) > 0.3f))
-        {
-            trailPositions.Add(simulatedPosition);
-            if (trailPositions.Count > 20) // Limitar la longitud de l'estela
-                trailPositions.RemoveAt(0);
-        }
-
-        // Forçar la repintada de l'escena
+        // Forcem la repintada de l’escena per veure els gizmos actualitzats
         SceneView.RepaintAll();
-    }
-
-    // Dibuixa el robot o un marcador si no hi ha robot
-    private void DrawRobotOrMarker()
-    {
-        if (robotPrefab != null)
-        {
-            // Si tenim un prefab de robot, el mostrem a la posició simulada
-            Matrix4x4 originalMatrix = Gizmos.matrix;
-
-            // Aplicar transformació a la posició i rotació simulades
-            Gizmos.matrix = Matrix4x4.TRS(simulatedPosition, simulatedRotation, Vector3.one);
-            
-            // Dibuixar un wireframe que representa el robot
-            // Això utilitza la mesh del prefab per dibuixar-la com a gizmo
-            MeshFilter[] meshFilters = robotPrefab.GetComponentsInChildren<MeshFilter>();
-            foreach (MeshFilter meshFilter in meshFilters)
-            {
-                if (meshFilter.sharedMesh != null)
-                {
-                    // Dibuixar cada mesh del robot
-                    Gizmos.color = new Color(0.2f, 0.7f, 1f, 0.7f);  // Color blavós
-                    Gizmos.DrawWireMesh(meshFilter.sharedMesh, 
-                                       meshFilter.transform.localPosition, 
-                                       meshFilter.transform.localRotation, 
-                                       meshFilter.transform.localScale);
-                }
-            }
-
-            // Restaurar la matriu original
-            Gizmos.matrix = originalMatrix;
-            
-            // Si no hi ha meshes al prefab, dibuixar una forma bàsica
-            if (meshFilters.Length == 0)
-            {
-                Gizmos.color = new Color(0.2f, 0.7f, 1f, 0.7f);
-                Gizmos.DrawWireCube(simulatedPosition, new Vector3(1f, 2f, 1f));
-            }
-        }
-        else
-        {
-            // Si no tenim un prefab de robot, dibuixem un simple cercle
-            Gizmos.color = new Color(1f, 0.3f, 0.3f, 1f); // Vermell
-            Gizmos.DrawSphere(simulatedPosition, 0.5f);
-
-            // Dibuixar una fletxa per indicar la direcció
-            if (previousPosition != Vector3.zero && Vector3.Distance(simulatedPosition, previousPosition) > 0.001f)
-            {
-                Vector3 direction = (simulatedPosition - previousPosition).normalized;
-                Vector3 right = Quaternion.LookRotation(direction) * Quaternion.Euler(0, 30, 0) * Vector3.forward;
-                Vector3 left = Quaternion.LookRotation(direction) * Quaternion.Euler(0, -30, 0) * Vector3.forward;
-
-                Gizmos.DrawRay(simulatedPosition, direction * 0.5f);
-                Gizmos.DrawRay(simulatedPosition, right * 0.25f);
-                Gizmos.DrawRay(simulatedPosition, left * 0.25f);
-            }
-        }
-    }
-
-    // Dibuixa l'estela que segueix al moviment
-    private void DrawTrail()
-    {
-        for (int i = 0; i < trailPositions.Count - 1; i++)
-        {
-            // Fer que l'opacitat disminueixi amb la distància
-            float alpha = trailColor.a * (i / (float)trailPositions.Count);
-            Gizmos.color = new Color(trailColor.r, trailColor.g, trailColor.b, alpha);
-            
-            // Connectar els punts de l'estela amb línies
-            Gizmos.DrawLine(trailPositions[i], trailPositions[i + 1]);
-            
-            // Dibuixar petits cercles al recorregut
-            Gizmos.DrawSphere(trailPositions[i], 0.1f);
-        }
     }
 }
 
-// Editor personalitzat per controlar la simulació
 [CustomEditor(typeof(EnemyNav_EditorMovementSimulator))]
 public class EnemyNav_EditorMovementSimulatorEditor : Editor
 {
-    private SerializedProperty simulateMovementInEditor;
-    private SerializedProperty simulationSpeed;
-    private SerializedProperty robotPrefab;
-    private SerializedProperty showTrail;
-    private SerializedProperty trailColor;
-
-    private void OnEnable()
-    {
-        simulateMovementInEditor = serializedObject.FindProperty("simulateMovementInEditor");
-        simulationSpeed = serializedObject.FindProperty("simulationSpeed");
-        robotPrefab = serializedObject.FindProperty("robotPrefab");
-        showTrail = serializedObject.FindProperty("showTrail");
-        trailColor = serializedObject.FindProperty("trailColor");
-    }
-
     public override void OnInspectorGUI()
     {
-        serializedObject.Update();
-
-        EditorGUILayout.PropertyField(simulateMovementInEditor);
-        EditorGUILayout.PropertyField(simulationSpeed);
-        
-        EditorGUILayout.PropertyField(robotPrefab);
-        EditorGUILayout.HelpBox("Arrossega aquí el prefab del teu robot per visualitzar-lo a l'editor", MessageType.Info);
-        
-        EditorGUILayout.PropertyField(showTrail);
-        EditorGUILayout.PropertyField(trailColor);
-
-        serializedObject.ApplyModifiedProperties();
-        
-        EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Controls de Simulació", EditorStyles.boldLabel);
-        
-        // Botons per controlar la simulació
-        EditorGUILayout.BeginHorizontal();
-        
+        // Obtenim una referència al component que estem editant
         EnemyNav_EditorMovementSimulator simulator = (EnemyNav_EditorMovementSimulator)target;
-        
-        if (GUILayout.Button("Reiniciar"))
-        {
-            // Reiniciar la simulació
-            simulator.GetType().GetField("currentWaypointIndex", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).SetValue(simulator, 0);
-            simulator.GetType().GetField("simulationProgress", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).SetValue(simulator, 0f);
-            simulator.GetType().GetField("trailPositions", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).SetValue(simulator, new List<Vector3>());
-            
-            // Forçar repintat
-            SceneView.RepaintAll();
-        }
-        
-        EditorGUILayout.EndHorizontal();
-        
-        EditorGUILayout.HelpBox("Aquest component simula el moviment de l'enemic a través dels waypoints directament a l'editor, sense necessitat de prémer Play.", MessageType.Info);
+
+        // Mostrem el checkbox per activar/desactivar la simulació
+        simulator.simulateMovementInEditor = EditorGUILayout.Toggle("Simular moviment a Editor", simulator.simulateMovementInEditor);
+
+        // Missatge informatiu
+        EditorGUILayout.HelpBox("Aquesta opció mostra una simulació visual del moviment entre waypoints al Scene View.", MessageType.Info);
     }
 }
 #endif

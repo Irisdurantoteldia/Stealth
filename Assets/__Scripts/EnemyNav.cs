@@ -3,151 +3,155 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
+// Assegura't que el component NavMeshAgent està present en el GameObject
 [RequireComponent(typeof(NavMeshAgent))]
 public class EnemyNav : MonoBehaviour
 {
     [Header("Configuration")]
     [Tooltip("Llista de punts de pas per patrullar")]
-    public List<Waypoint> waypoints = new List<Waypoint>();
+    public List<Waypoint> waypoints = new List<Waypoint>();  // Llista de waypoints que l'enemic ha de seguir
     
     [Tooltip("Velocitat de moviment")]
-    public float speed = 4.0f;
+    public float speed = 4.0f; // Velocitat de moviment de l'enemic
     
     [Tooltip("Velocitat de rotació")]
-    public float angularSpeed = 90.0f;
+    public float angularSpeed = 90.0f; // Velocitat de rotació de l'enemic
 
     [Header("State")]
-    [SerializeField] private int currentWaypointIndex = 0;
-    [SerializeField] private int targetWaypointIndex = 0;
-    
-    // Components
-    private NavMeshAgent agent;
+    [SerializeField] private int currentWaypointIndex = 0; // Índex del waypoint actual
+    [SerializeField] private int targetWaypointIndex = 0;  // Índex del waypoint objectiu
 
-    // Estat intern
-    private float waitTimer = 0f;
-    private enum NavState { RotatingBeforeMoving, Moving, RotatingAtWaypoint, Waiting }
-    private NavState currentState = NavState.RotatingBeforeMoving;
+    // Components
+    private NavMeshAgent agent; // Agent de NavMesh que permet moure l'enemic pel mapa
+
+    // Estat intern de l'enemic durant el patrullatge
+    private float waitTimer = 0f; // Temporitzador per esperar als waypoints
+    private enum NavState { RotatingBeforeMoving, Moving, RotatingAtWaypoint, Waiting } // Estats en què pot estar l'enemic
+    private NavState currentState = NavState.RotatingBeforeMoving; // Estat actual de l'enemic
 
     [Header("Debug")]
     [SerializeField]
-    private bool drawGizmos = true;
+    private bool drawGizmos = true; // Permet dibuixar informació de depuració a l'editor
     [SerializeField]
-    private string currentStateDebug = "";
+    private string currentStateDebug = ""; // Mostrar l'estat actual de l'enemic per a depuració
 
     private void Awake()
     {
+        // Obtenim el component NavMeshAgent associat a l'enemic
         agent = GetComponent<NavMeshAgent>();
     }
 
     private void Start()
     {
-        // Configurar l'agent
+        // Configurem la velocitat i la velocitat de rotació del NavMeshAgent
         agent.speed = speed;
         agent.angularSpeed = angularSpeed;
-        agent.updateRotation = false; // Important: Desactivem la rotació automàtica
+        agent.updateRotation = false; // Desactivem la rotació automàtica per controlar-la manualment
         
-        // Iniciar el patrullatge si hi ha waypoints
+        // Si tenim waypoints definits, iniciem el patrullatge
         if (waypoints.Count > 0)
         {
-            currentWaypointIndex = 0;
-            targetWaypointIndex = 0;
-            currentState = NavState.RotatingBeforeMoving;
+            currentWaypointIndex = 0;  // Inicialitzem l'índex del primer waypoint
+            targetWaypointIndex = 0;   // Inicialitzem l'índex del waypoint objectiu
+            currentState = NavState.RotatingBeforeMoving; // Inicialitzem l'estat a "Rotant abans de moure"
         }
     }
 
     private void Update()
     {
+        // Si no tenim waypoints, no fem res
         if (waypoints.Count == 0) return;
 
-        // Actualitzar el debug de l'estat
+        // Actualitzem l'estat de depuració mostrant l'estat actual de l'enemic
         currentStateDebug = currentState.ToString();
 
+        // Depenent de l'estat, cridem la funció corresponent
         switch (currentState)
         {
             case NavState.RotatingBeforeMoving:
-                UpdateRotationBeforeMoving();
+                UpdateRotationBeforeMoving(); // Actualitza la rotació abans de començar a moure's
                 break;
             case NavState.Moving:
-                UpdateMovement();
+                UpdateMovement(); // Actualitza el moviment quan l'enemic es mou
                 break;
             case NavState.RotatingAtWaypoint:
-                UpdateRotationAtWaypoint();
+                UpdateRotationAtWaypoint(); // Actualitza la rotació quan l'enemic arribi a un waypoint
                 break;
             case NavState.Waiting:
-                UpdateWaiting();
+                UpdateWaiting(); // Actualitza el temporitzador d'espera entre waypoints
                 break;
         }
     }
 
+    // Aquesta funció controla la rotació de l'enemic abans de començar a moure's
     private void UpdateRotationBeforeMoving()
     {
-        // Calculem la direcció cap al waypoint objectiu
+        // Calculem la direcció cap al següent waypoint
         Vector3 targetDirection = waypoints[targetWaypointIndex].Position - transform.position;
-        targetDirection.y = 0; // Assegurem que la rotació sigui només en l'eix Y
+        targetDirection.y = 0; // Assegurem que la rotació es faci només sobre l'eix Y (horitzontal)
 
+        // Si estem massa a prop del waypoint, passem a rotar cap a ell
         if (targetDirection.magnitude < 0.1f)
         {
-            // Si estem massa a prop, passem directament a la rotació al waypoint
-            currentState = NavState.RotatingAtWaypoint;
+            currentState = NavState.RotatingAtWaypoint; // Canviem l'estat a rotar al waypoint
             return;
         }
 
-        // Calculem la rotació desitjada (mirant cap al waypoint)
+        // Calculem la rotació desitjada per mirar cap al waypoint
         Quaternion targetRotation = Quaternion.LookRotation(targetDirection);
         
-        // Rotem gradualment cap a l'orientació desitjada
+        // Rotem gradualment cap a la rotació desitjada amb una velocitat angular determinada
         transform.rotation = Quaternion.RotateTowards(transform.rotation, targetRotation, 
             angularSpeed * Time.deltaTime);
         
-        // Comprovem si ja estem orientats cap al waypoint (amb una petita tolerància)
+        // Comprovem si ja estem mirant cap al waypoint
         if (Quaternion.Angle(transform.rotation, targetRotation) < 2.0f)
         {
             // Quan estem orientats, comencem a moure'ns
-            agent.SetDestination(waypoints[targetWaypointIndex].Position);
-            currentState = NavState.Moving;
+            agent.SetDestination(waypoints[targetWaypointIndex].Position); // Establim el destí del NavMeshAgent
+            currentState = NavState.Moving; // Canviem a l'estat de moviment
         }
     }
 
+    // Aquesta funció s'encarrega de moure l'enemic entre els waypoints
     private void UpdateMovement()
     {
-        // Comprovar si hem arribat al waypoint actual
+        // Comprovem si hem arribat al waypoint objectiu
         if (!agent.pathPending && agent.remainingDistance <= agent.stoppingDistance)
         {
-            // Hem arribat al waypoint, actualitzem l'índex actual
-            currentWaypointIndex = targetWaypointIndex;
-            
-            // Comencem a rotar cap a l'orientació del waypoint
-            currentState = NavState.RotatingAtWaypoint;
+            currentWaypointIndex = targetWaypointIndex; // Actualitzem l'índex del waypoint actual
+            currentState = NavState.RotatingAtWaypoint; // Canviem a l'estat de rotació a l'arribar
         }
     }
 
+    // Aquesta funció actualitza la rotació de l'enemic quan ha arribat al waypoint
     private void UpdateRotationAtWaypoint()
     {
-        // Obtenir l'orientació desitjada del waypoint actual
+        // Obtenim la rotació desitjada per al waypoint actual
         Quaternion targetRotation = waypoints[currentWaypointIndex].Rotation;
         
-        // Rotar gradualment cap a l'orientació desitjada
+        // Rotem gradualment cap a la rotació desitjada
         transform.rotation = Quaternion.RotateTowards(transform.rotation, targetRotation, 
             angularSpeed * Time.deltaTime);
         
-        // Comprovar si hem acabat de rotar (amb una petita tolerància)
+        // Comprovem si hem acabat de rotar (amb una tolerància)
         if (Quaternion.Angle(transform.rotation, targetRotation) < 1.0f)
         {
-            // Comencem a esperar
-            waitTimer = waypoints[currentWaypointIndex].waitTime;
-            currentState = NavState.Waiting;
+            // Quan hem acabat de rotar, comencem a esperar abans de moure'ns al següent waypoint
+            waitTimer = waypoints[currentWaypointIndex].waitTime; 
+            currentState = NavState.Waiting; // Canviem l'estat a "Esperant"
         }
     }
 
+    // Aquesta funció gestiona el temps d'espera entre waypoints
     private void UpdateWaiting()
     {
-        // Disminuir el temps d'espera
+        // Disminuïm el temporitzador d'espera
         waitTimer -= Time.deltaTime;
         
-        // Comprovar si hem d'avançar al següent waypoint
         if (waitTimer <= 0)
         {
-            // Calcular el següent waypoint
+            // Calcular el següent waypoint (amb cicle, quan arriba al final, torna al primer)
             targetWaypointIndex = (currentWaypointIndex + 1) % waypoints.Count;
             
             // Primer girem cap al següent waypoint
@@ -155,17 +159,18 @@ public class EnemyNav : MonoBehaviour
         }
     }
 
+    // Aquesta funció dibuixa informació de depuració a l'escena de Unity
     private void OnDrawGizmos()
     {
+        // Si està activat el dibuix de gizmos i tenim waypoints, dibuixem la ruta
         if (!drawGizmos || waypoints.Count == 0) return;
 
-        // Dibuixar línies entre els waypoints per visualitzar la ruta
-        Gizmos.color = Color.yellow;
+        Gizmos.color = Color.yellow; // Configurem el color dels gizmos
         for (int i = 0; i < waypoints.Count; i++)
         {
-            if (waypoints[i] == null) continue;
-            
-            // Dibuixar una línia des d'aquest waypoint al següent
+            if (waypoints[i] == null) continue; // Si el waypoint no existeix, continuem
+
+            // Dibuixem línies entre els waypoints per visualitzar la ruta
             int nextIndex = (i + 1) % waypoints.Count;
             if (waypoints[nextIndex] != null)
             {
@@ -173,13 +178,12 @@ public class EnemyNav : MonoBehaviour
             }
         }
 
-        // Si estem en estat de joc, dibuixar l'estat actual
+        // Si estem en mode joc, dibuixem la línia des de la posició actual fins al waypoint objectiu
         if (Application.isPlaying)
         {
-            // Dibuixar una línia des de la posició actual al waypoint objectiu
             if (targetWaypointIndex < waypoints.Count && waypoints[targetWaypointIndex] != null)
             {
-                Gizmos.color = Color.red;
+                Gizmos.color = Color.red; // Configurem el color per a la línia de moviment
                 Gizmos.DrawLine(transform.position, waypoints[targetWaypointIndex].Position);
             }
         }
